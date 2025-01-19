@@ -9,6 +9,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
+use Symfony\Component\Serializer\SerializerInterface;
 
 #[IsGranted('ROLE_STUDENT', message: 'You are not allowed to access lessons.')]
 #[Route('/api', name: 'api_')]
@@ -16,41 +17,28 @@ class LessonController extends AbstractController
 {
     public function __construct(
         private EntityManagerInterface $entityManager,
+        private SerializerInterface $serializer,
     ) {
     }
 
     #[Route('/lessons', name: 'lesson_index', methods: ['get'])]
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
         $lessons = $this->entityManager
             ->getRepository(Lesson::class)
             ->findAll();
 
-        $data = [];
-
-        foreach ($lessons as $lesson) {
-            $data[] = [
-                'id' => $lesson->getId(),
-                'name' => $lesson->getName(),
-                'description' => $lesson->getDescription(),
-            ];
-        }
-
-        return $this->json($data);
+        return $this->json($lessons, JsonResponse::HTTP_OK, [], ['groups' => 'lesson:read']);
     }
 
     #[Route('/lessons', name: 'lesson_create', methods: ['post'])]
     public function create(Request $request): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $lesson = $this->serializer->deserialize($request->getContent(), Lesson::class, 'json');
 
-        if (!isset($data['name'], $data['description'])) {
+        if (!$lesson->getName() || !$lesson->getDescription()) {
             return $this->json(['error' => 'Missing required fields'], JsonResponse::HTTP_BAD_REQUEST);
         }
-
-        $lesson = new Lesson();
-        $lesson->setName($data['name']);
-        $lesson->setDescription($data['description']);
 
         $this->entityManager->persist($lesson);
         $this->entityManager->flush();
@@ -67,37 +55,31 @@ class LessonController extends AbstractController
             return $this->json(['error' => 'Lesson not found'], JsonResponse::HTTP_NOT_FOUND);
         }
 
-        $data = [
-            'id' => $lesson->getId(),
-            'name' => $lesson->getName(),
-            'description' => $lesson->getDescription(),
-        ];
-
-        return $this->json($data);
+        return $this->json($lesson, JsonResponse::HTTP_OK, [], ['groups' => 'lesson:read']);
     }
 
     #[Route('/lessons/{id}', name: 'lesson_update', methods: ['put', 'patch'])]
     public function update(int $id, Request $request): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
-
         $lesson = $this->entityManager->getRepository(Lesson::class)->find($id);
 
         if (!$lesson) {
             return $this->json(['error' => 'Lesson not found'], JsonResponse::HTTP_NOT_FOUND);
         }
 
-        if (isset($data['name'])) {
-            $lesson->setName($data['name']);
+        $updatedLesson = $this->serializer->deserialize($request->getContent(), Lesson::class, 'json');
+
+        if ($updatedLesson->getName()) {
+            $lesson->setName($updatedLesson->getName());
         }
 
-        if (isset($data['description'])) {
-            $lesson->setDescription($data['description']);
+        if ($updatedLesson->getDescription()) {
+            $lesson->setDescription($updatedLesson->getDescription());
         }
 
         $this->entityManager->flush();
 
-        return $this->json(['message' => 'Lesson updated successfully']);
+        return $this->json(['message' => 'Lesson updated successfully'], JsonResponse::HTTP_OK);
     }
 
     #[Route('/lessons/{id}', name: 'lesson_delete', methods: ['delete'])]
@@ -112,6 +94,6 @@ class LessonController extends AbstractController
         $this->entityManager->remove($lesson);
         $this->entityManager->flush();
 
-        return $this->json(['message' => 'Lesson deleted successfully']);
+        return $this->json(['message' => 'Lesson deleted successfully'], JsonResponse::HTTP_OK);
     }
 }

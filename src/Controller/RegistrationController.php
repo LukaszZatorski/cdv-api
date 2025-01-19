@@ -10,6 +10,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
+use Symfony\Component\Serializer\SerializerInterface;
 
 #[IsGranted('ROLE_ADMIN', message: 'You are not allowed to register users.')]
 #[Route('/api', name: 'api_')]
@@ -18,18 +19,21 @@ class RegistrationController extends AbstractController
     public function __construct(
         private EntityManagerInterface $entityManager,
         private UserService $userService,
+        private SerializerInterface $serializer
     ) {
     }
 
     #[Route('/register', name: 'register', methods: 'post')]
     public function index(Request $request): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $data = $request->getContent();
+        
+        $user = $this->serializer->deserialize($data, User::class, 'json');
 
-        $email = $data['email'];
-        $name = $data['name'];
-        $surname = $data['surname'];
-        $roles = $data['roles'];
+        $email = $user->getEmail();
+        $name = $user->getName();
+        $surname = $user->getSurname();
+        $roles = $user->getRoles();
 
         if (!isset($email, $name, $surname, $roles)) {
             return $this->json(['error' => 'Missing required fields'], JsonResponse::HTTP_BAD_REQUEST);
